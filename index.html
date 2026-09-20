@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f0d17">
+<title>Arbitrage Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="toast" class="toast"></div>
+
+<div id="authModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
+    <div class="modal-icon">🔐</div>
+    <h2>Sign In</h2>
+    <p class="modal-sub">Enter your email — we'll send you a magic link.</p>
+    <div class="input-wrap">
+      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" inputmode="email">
+    </div>
+    <button type="button" id="authSendBtn" class="btn-primary">
+      <span id="authSendLabel">Send Magic Link</span>
+    </button>
+    <p class="modal-status" id="authStatus"></p>
+  </div>
+</div>
+
+<div id="presetModal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <button class="modal-close" id="presetModalClose" aria-label="Close">✕</button>
+    <div class="modal-icon">💾</div>
+    <h2>Save Route Preset</h2>
+    <p class="modal-sub">Save this route so you can reload it later without re-entering currencies.</p>
+    <div class="form-group">
+      <label>Preset name</label>
+      <div class="input-wrap">
+        <input type="text" id="presetName" placeholder="e.g. Bybit-Fiji-GBP route" autocomplete="off">
+      </div>
+    </div>
+    <button type="button" id="presetSaveBtn" class="btn-primary">Save Preset</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="header-bar">
+    <div class="logo">
+      <div class="logo-mark">⇄</div>
+      <div>
+        <div class="logo-text">Arbitrage Calc</div>
+        <div class="logo-sub">Multi-leg currency arbitrage</div>
+      </div>
+    </div>
+    <button type="button" id="auth-btn" class="auth-chip">Sign In</button>
+  </div>
+  <div id="user-info" class="user-chip"></div>
+
+  <div id="verdict" class="verdict verdict-neutral">
+    <div class="verdict-label">ROI</div>
+    <div class="verdict-value">—</div>
+    <div class="verdict-sub">Enter a route below to see if it's profitable</div>
+  </div>
+
+  <div class="card">
+    <div class="form-group">
+      <label>Starting currency</label>
+      <div class="input-wrap">
+        <input type="text" id="startCurrency" placeholder="NGN" maxlength="6" autocomplete="off" style="text-transform:uppercase">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Starting amount</label>
+      <div class="input-wrap">
+        <input type="number" id="startAmount" placeholder="0.00" step="any" inputmode="decimal">
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Route Legs</div>
+  <div id="legsContainer"></div>
+
+  <div class="row-actions">
+    <button type="button" id="addLegBtn" class="btn-secondary">+ Add leg</button>
+    <button type="button" id="savePresetBtn" class="btn-secondary">💾 Save as preset</button>
+  </div>
+
+  <div id="presetsSection" style="display:none;">
+    <div class="section-title">Saved Presets</div>
+    <div id="presetsList"></div>
+  </div>
+
+  <button type="button" id="calculate-btn" class="btn-primary">Calculate route</button>
+
+  <div id="results" class="results" style="display:none;">
+    <div class="section-title">Leg-by-leg breakdown</div>
+    <div class="result-card" id="breakdownCard"></div>
+
+    <div class="result-card" style="margin-top:12px;">
+      <div class="detail-row">
+        <span class="detail-label">Started with</span>
+        <span class="detail-value" id="startedVal"></span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Ended with</span>
+        <span class="detail-value" id="endedVal"></span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Net profit</span>
+        <span class="detail-value" id="profitVal"></span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">ROI</span>
+        <span class="detail-value" id="roiVal"></span>
+      </div>
+    </div>
+
+    <button type="button" id="saveTradeBtn" class="btn-primary">Save to history</button>
+  </div>
+
+  <button type="button" id="history-btn" class="btn-secondary">View my history</button>
+  <div id="history-list"></div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+</body>
+</html>
