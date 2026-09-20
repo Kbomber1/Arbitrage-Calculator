@@ -320,3 +320,235 @@ document.addEventListener('DOMContentLoaded', () => {
 
   updateAuthUI();
   supabase.auth.onAuthStateChange(() => updateAuthUI());
+  
+  // ---------- SAVE TRADE ----------
+  $('saveTradeBtn').addEventListener('click', async () => {
+    if (!lastCalc) { showToast('Calculate first', 'error'); return; }
+    const user = await getUser();
+    if (!user) { showModal(); return; }
+
+    const { error } = await supabase.from('arbitrage_trades').insert({
+      user_id: user.id,
+      starting_currency: lastCalc.startCurrency,
+      starting_amount: lastCalc.startAmount,
+      final_currency: lastCalc.finalCurrency,
+      final_amount: lastCalc.finalAmount,
+      profit: lastCalc.profit,
+      roi_percent: lastCalc.roiPercent,
+      legs: lastCalc.steps
+    });
+
+    if (error) {
+      showToast('Save error: ' + error.message, 'error');
+    } else {
+      showToast('Saved to history ✓', 'success');
+    }
+  });
+
+  // ---------- HISTORY ----------
+  $('history-btn').addEventListener('click', loadHistory);
+
+  async function loadHistory() {
+    try {
+      const user = await getUser();
+      if (!user) { showModal(); return; }
+
+      const { data, error } = await supabase
+        .from('arbitrage_trades')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      const container = $('history-list');
+
+      if (error) {
+        container.innerHTML = '<div class="empty-state">⚠️ ' + escapeHtml(error.message) + '</div>';
+        return;
+      }
+
+      if (!data || !data.length) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">📊</div>No trades yet</div>';
+        return;
+      }
+
+      let html = '';
+      data.forEach((r) => {
+        const profitClass = r.profit >= 0 ? 'positive' : 'negative';
+        const route = (r.legs || []).map((s) => s.from).join(' → ') + ' → ' + (r.legs && r.legs.length ? r.legs[r.legs.length - 1].to : '');
+
+        html += `
+          <div class="history-item">
+            <div class="history-route">${escapeHtml(route)}</div>
+            <div class="history-profit ${profitClass}">
+              ${(r.roi_percent >= 0 ? '+' : '')}${fmtNum(r.roi_percent, 2)}%
+            </div>
+            <div class="history-meta">
+              ${fmtNum(r.starting_amount, 2)} ${escapeHtml(r.starting_currency)} → ${fmtNum(r.final_amount, 2)} ${escapeHtml(r.final_currency)}
+            </div>
+            <div class="history-meta">Profit: ${(r.profit >= 0 ? '+' : '')}${fmtNum(r.profit, 2)} ${escapeHtml(r.starting_currency)}</div>
+            <div class="history-meta">${new Date(r.created_at).toLocaleString()}</div>
+            <div class="history-actions">
+              <button type="button" class="btn-edit" data-edit="${r.id}">✏️ Edit</button>
+              <button type="button" class="btn-delete" data-delete="${r.id}">🗑 Delete</button>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-edit');
+          const trade = data.find((x) => x.id === id);
+          if (!trade) return;
+          legs = (trade.legs || []).map((s) => ({
+            from: s.from,
+            to: s.to,
+            rate: s.rate,
+            fee: s.feePercent
+          }));
+          $('startCurrency').value = trade.starting_currency;
+          $('startAmount').value = trade.starting_amount;
+          renderLegs();
+          showToast('Loaded from history — edit and recalculate');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      });
+
+      container.querySelectorAll('[data-delete]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          deleteTrade(btn.getAttribute('data-delete'));
+        });
+      });
+
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  }
+
+  async function deleteTrade(id) {
+    if (!confirm('Delete this trade from history?')) return;
+    const { error } = await supabase.from('arbitrage_trades').delete().eq('id', id);
+    if (error) {
+      showToast('Delete error: ' + error.message, 'error');
+      return;
+    }
+    showToast('Deleted', 'success');
+    loadHistory();
+  }
+
+  // ---------- PRESETS ----------
+  $('savePresetBtn').addEventListener('click', () => {
+    const user = getUser();
+    user.then((u) => {
+      if (!u) { showModal(); return; }
+      if (legs.length < 2) { showToast('Add at least 2 legs', 'error'); return; }
+      for (let i = 0; i < legs.length; i++) {
+        if (!legs[i].from || !legs[i].to) {
+          showToast('Leg ' + (i + 1) + ': fill From and To', 'error');
+          return;
+        }
+      }
+      $('presetName').value = '';
+      $('presetModal').classList.remove('hidden');
+      setTimeout(() => $('presetName').focus(), 250);
+    });
+  });
+
+  $('presetModalClose').addEventListener('click', () => {
+    $('presetModal').classList.add('hidden');
+  });
+  $('presetModal').addEventListener('click', (e) => {
+    if (e.target === $('presetModal')) $('presetModal').classList.add('hidden');
+  });
+
+  $('presetSaveBtn').addEventListener('click', async () => {
+    const name = $('presetName').value.trim();
+    if (!name) { showToast('Enter a preset name', 'error'); return; }
+
+    const user = await getUser();
+    if (!user) { showModal(); return; }
+
+    const cleanLegs = legs.map((l) => ({ from: l.from, to: l.to }));
+
+    const { error } = await supabase.from('arbitrage_presets').insert({
+      user_id: user.id,
+      preset_name: name,
+      starting_currency: $('startCurrency').value.trim().toUpperCase() || '',
+      legs: cleanLegs
+    });
+
+    if (error) {
+      showToast('Save error: ' + error.message, 'error');
+      return;
+    }
+
+    showToast('Preset saved ✓', 'success');
+    $('presetModal').classList.add('hidden');
+    loadPresets();
+  });
+
+  async function loadPresets() {
+    const user = await getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('arbitrage_presets')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    const container = $('presetsList');
+    if (error) {
+      container.innerHTML = '<div class="empty-state">Error: ' + escapeHtml(error.message) + '</div>';
+      return;
+    }
+    if (!data || !data.length) {
+      container.innerHTML = '<div class="empty-state">No presets yet</div>';
+      return;
+    }
+
+    let html = '';
+    data.forEach((p) => {
+      const route = (p.legs || []).map((s) => s.from).join(' → ') + ' → ' + (p.legs && p.legs.length ? p.legs[p.legs.length - 1].to : '');
+      html += `
+        <div class="preset-item">
+          <div class="preset-info">
+            <div class="preset-name">${escapeHtml(p.preset_name)}</div>
+            <div class="preset-route">${escapeHtml(route)}</div>
+          </div>
+          <div class="preset-actions">
+            <button type="button" data-load-preset="${p.id}">Load</button>
+            <button type="button" data-delete-preset="${p.id}">✕</button>
+          </div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+
+    container.querySelectorAll('[data-load-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-load-preset');
+        const preset = data.find((x) => x.id === id);
+        if (!preset) return;
+        legs = (preset.legs || []).map((s) => ({ from: s.from, to: s.to, rate: '', fee: '' }));
+        if (legs.length < 2) legs.push({ from: '', to: '', rate: '', fee: '' });
+        $('startCurrency').value = preset.starting_currency || '';
+        renderLegs();
+        showToast('Preset loaded — enter rates');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+
+    container.querySelectorAll('[data-delete-preset]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-delete-preset');
+        if (!confirm('Delete this preset?')) return;
+        const { error } = await supabase.from('arbitrage_presets').delete().eq('id', id);
+        if (error) { showToast('Delete error: ' + error.message, 'error'); return; }
+        showToast('Preset deleted', 'success');
+        loadPresets();
+      });
+    });
+  }
+
+});
